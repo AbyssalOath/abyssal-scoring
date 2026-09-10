@@ -1,0 +1,12 @@
+/target
+src-tauri/target
+src-tauri/gen/schemas
+node_modules
+*.sqlite
+*.sqlite-journal
+*.abyssal
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

@@ -1,0 +1,8 @@
+{
+  "identifier": "default",
+  "description": "Default permissions for the control panel window",
+  "windows": ["control"],
+  "permissions": [
+    "dialog:default"
+  ]
+}

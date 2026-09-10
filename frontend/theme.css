@@ -1,0 +1,54 @@
+/* Every theme sets these custom properties (defaults below match the
+   "Old School Grid" preset: black background, red LED-style digits).
+   Re-skinning the scoreboard means changing these variables via JS
+   after fetching the theme from the backend -- nothing else here
+   should need to change per-theme. */
+:root {
+  --abyssal-bg: #0a0a0a;
+  --abyssal-primary: #ff1a1a;
+  --abyssal-accent: #ffb000;
+  --abyssal-font: "Courier New", "Share Tech Mono", monospace;
+  --abyssal-bg-image: none;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: var(--abyssal-bg);
+  background-image: var(--abyssal-bg-image);
+  background-size: cover;
+  background-position: center;
+  color: var(--abyssal-primary);
+  font-family: var(--abyssal-font);
+}
+
+/* The faint dividing grid associated with physical LED scoreboards.
+   Toggled by ScoreboardTheme.show_grid_overlay (JS adds/removes the
+   `.grid-overlay` class on <body>). */
+.grid-overlay {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    var(--abyssal-bg-image);
+  background-size: 40px 40px, 40px 40px, cover;
+}
+
+.led-digits {
+  font-family: var(--abyssal-font);
+  color: var(--abyssal-primary);
+  text-shadow: 0 0 8px var(--abyssal-primary), 0 0 18px var(--abyssal-primary);
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.accent {
+  color: var(--abyssal-accent);
+  text-shadow: 0 0 8px var(--abyssal-accent);
+}
+
+.logo {
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}

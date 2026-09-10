@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Abyssal Scoring - Control Panel</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; background: #f4f4f6; color: #1a1a1a; }
+    header { padding: 12px 20px; background: #14161a; color: #fff; display: flex; align-items: center; gap: 16px; }
+    header h1 { font-size: 16px; margin: 0; }
+    main { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 48px); }
+    nav { background: #1e2126; padding: 16px 0; }
+    nav button { display: block; width: 100%; text-align: left; padding: 10px 20px; background: none; border: none; color: #cfd3da; cursor: pointer; font-size: 14px; }
+    nav button.active, nav button:hover { background: #2a2f37; color: #fff; }
+    section.panel { display: none; padding: 24px; max-width: 900px; }
+    section.panel.active { display: block; }
+    h2 { margin-top: 0; }
+    label { display: block; font-size: 13px; margin: 10px 0 4px; color: #444; }
+    input, select, textarea { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    button.primary { margin-top: 14px; padding: 8px 16px; background: #c8102e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    button.secondary { margin-top: 14px; margin-left: 8px; padding: 8px 16px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    input[type="color"] {
+      -webkit-appearance: none;
+      appearance: none;
+      padding: 0;
+      height: 32px;
+      cursor: pointer;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: 1px solid #ccc; }
+    .hidden { display: none; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ddd; font-size: 13px; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    .status { margin-top: 10px; font-size: 13px; color: #555; }
+    .swatch { display: inline-block; width: 16px; height: 16px; border-radius: 3px; vertical-align: middle; margin-right: 6px; border: 1px solid #999; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Abyssal Scoring</h1>
+    <span id="active-competition-label" style="opacity:.7; font-size:13px;"></span>
+  </header>
+  <main>
+    <nav>
+      <button data-panel="competitions" class="active">Competitions</button>
+      <button data-panel="roster">Roster</button>
+      <button data-panel="schedule">Schedule</button>
+      <button data-panel="live">Live Scoring</button>
+      <button data-panel="scoreboard">Scoreboard &amp; Theme</button>
+      <button data-panel="data">Export / Import</button>
+    </nav>
+
+    <section id="competitions" class="panel active">
+      <h2>Competitions</h2>
+      <div class="row">
+        <div>
+          <label>Name</label>
+          <input id="comp-name" placeholder="Fall Invitational" />
+        </div>
+        <div>
+          <label>Sport</label>
+          <select id="comp-sport">
+            <option value="gymnastics">Gymnastics</option>
+            <option value="swimming">Swimming</option>
+            <option value="track_and_field">Track &amp; Field</option>
+          </select>
+        </div>
+        <div>
+      	  <label>Date (YYYY-MM-DD)</label>
+  	  <input id="comp-date" type="text" placeholder="2026-09-09" />
+        </div>
+      </div>
+      <button class="primary" id="create-competition">Create competition</button>
+      <table id="competitions-table">
+        <thead><tr><th></th><th>Name</th><th>Sport</th><th>Date</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="roster" class="panel">
+      <h2>Roster</h2>
+      <h3>Team</h3>
+      <div class="row">
+        <div><label>Team name</label><input id="team-name" /></div>
+        <div><label>Primary color</label><input id="team-primary" type="color" value="#c8102e" /></div>
+        <div><label>Secondary color</label><input id="team-secondary" type="color" value="#111111" /></div>
+	<div>
+  	  <label>Logo image</label>
+  	  <button type="button" class="secondary" id="team-logo-pick">Choose image&hellip;</button>
+  	  <input type="hidden" id="team-logo" />
+  	  <span id="team-logo-name" style="font-size:12px; opacity:.7; display:block; margin-top:4px;"></span>
+	</div>
+      </div>
+      <button class="primary" id="add-team">Add team</button>
+
+      <h3>Participant</h3>
+      <div class="row">
+        <div><label>First name</label><input id="p-first" /></div>
+        <div><label>Last name</label><input id="p-last" /></div>
+      </div>
+      <button class="primary" id="add-participant">Add participant</button>
+
+      <h3>Judge</h3>
+      <div class="row">
+        <div><label>Name</label><input id="j-name" /></div>
+        <div>
+          <label>Role</label>
+          <select id="j-role">
+            <option value="head">Head</option>
+            <option value="difficulty">Difficulty (D)</option>
+            <option value="execution">Execution (E)</option>
+            <option value="line">Line</option>
+            <option value="referee">Referee</option>
+            <option value="timer">Timer</option>
+          </select>
+        </div>
+      </div>
+      <button class="primary" id="add-judge">Add judge</button>
+
+      <table id="roster-table">
+        <thead><tr><th>Type</th><th>Name</th><th>Detail</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="schedule" class="panel">
+      <h2>Schedule</h2>
+      <div class="row">
+        <div><label>Event name</label><input id="event-name" placeholder="Women's Floor Exercise" /></div>
+        <div><label>Order</label><input id="event-order" type="number" value="1" /></div>
+      </div>
+      <button class="primary" id="add-event">Add event</button>
+      <table id="events-table">
+        <thead><tr><th>Order</th><th>Event</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="live" class="panel">
+      <h2>Live Scoring</h2>
+      <div class="row">
+        <div>
+          <label>Event</label>
+          <select id="live-event"></select>
+        </div>
+        <div>
+          <label>Participant</label>
+          <select id="live-participant"></select>
+        </div>
+      </div>
+      <button class="primary" id="set-current">Put on scoreboard</button>
+      <button class="secondary" id="clear-board">Clear scoreboard (next event)</button>
+
+      <div id="gymnastics-scoring" class="hidden">
+        <h3>Submit gymnastics score</h3>
+        <div class="row">
+          <div><label>Apparatus</label>
+            <select id="apparatus">
+              <option value="vault">Vault</option>
+              <option value="uneven_bars">Uneven Bars</option>
+              <option value="balance_beam">Balance Beam</option>
+              <option value="floor">Floor</option>
+              <option value="pommel_horse">Pommel Horse</option>
+              <option value="still_rings">Still Rings</option>
+              <option value="parallel_bars">Parallel Bars</option>
+              <option value="horizontal_bar">Horizontal Bar</option>
+            </select>
+          </div>
+          <div><label>Difficulty (D)</label><input id="difficulty" type="number" step="0.1" value="5.0" /></div>
+          <div><label>Neutral deductions</label><input id="neutral" type="number" step="0.1" value="0" /></div>
+        </div>
+
+        <h4>Execution panel</h4>
+        <p style="font-size:13px; opacity:.75; margin:4px 0;">
+          Check each judge scoring this routine and enter their deduction total.
+          Two or more checked: the high and low are dropped and the rest averaged.
+          None checked: the single field below is used instead.
+        </p>
+        <table id="judge-panel-table">
+          <thead><tr><th></th><th>Judge</th><th>Deduction total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="row">
+          <div><label>Deduction total (only used if no judges are checked above)</label><input id="deduction-total-fallback" type="number" step="0.1" value="0" /></div>
+        </div>
+
+        <button class="primary" id="submit-score">Submit score</button>
+      </div>
+
+      <div id="time-trial-scoring" class="hidden">
+        <h3>Submit swimming / track time</h3>
+        <div class="row">
+          <div><label>Elapsed time (seconds)</label><input id="elapsed-seconds" type="number" step="0.01" value="0" /></div>
+          <div><label>Time penalty (seconds)</label><input id="time-penalty" type="number" step="0.01" value="0" /></div>
+        </div>
+        <button class="primary" id="submit-time-score">Submit time</button>
+      </div>
+
+      <div class="status" id="live-status"></div>
+    </section>
+
+    <section id="scoreboard" class="panel">
+      <h2>Scoreboard &amp; Theme</h2>
+      <button class="primary" id="open-display">Open scoreboard display window</button>
+      <button class="secondary" id="open-display-fullscreen">Open fullscreen (2nd monitor)</button>
+
+      <h3>Theme</h3>
+      <div class="row">
+        <div><label>Preset</label>
+          <select id="theme-preset">
+            <option value="old_school_grid">Old School Grid (black/red LED)</option>
+            <option value="modern">Modern</option>
+            <option value="custom">Custom / team colors</option>
+          </select>
+        </div>
+        <div><label>Background</label><input id="theme-bg" type="color" value="#0a0a0a" /></div>
+        <div><label>Primary (digits)</label><input id="theme-primary" type="color" value="#ff1a1a" /></div>
+        <div><label>Accent</label><input id="theme-accent" type="color" value="#ffb000" /></div>
+      </div>
+      <div class="row">
+	<div>
+  	  <label>Background image</label>
+  	  <button type="button" class="secondary" id="theme-bg-image-pick">Choose image&hellip;</button>
+  	  <input type="hidden" id="theme-bg-image" />
+  	  <span id="theme-bg-image-name" style="font-size:12px; opacity:.7; display:block; margin-top:4px;"></span>
+	</div>
+	<div>
+  	  <label>Logo image</label>
+  	  <button type="button" class="secondary" id="theme-logo-pick">Choose image&hellip;</button>
+  	  <input type="hidden" id="theme-logo" />
+  	  <span id="theme-logo-name" style="font-size:12px; opacity:.7; display:block; margin-top:4px;"></span>
+	</div>
+        <div><label><input id="theme-grid" type="checkbox" checked style="width:auto" /> Show grid overlay</label></div>
+      </div>
+      <button class="primary" id="save-theme">Save theme</button>
+    </section>
+
+    <section id="data" class="panel">
+      <h2>Export / Import</h2>
+      <p>Export everything in this instance (competitions, participants, teams, judges, results, scores, rankings, themes) into a single portable <code>.abyssal</code> file, and import it into another install.</p>
+      <button class="primary" id="do-export">Export to .abyssal file&hellip;</button>
+
+      <label>When importing</label>
+      <select id="import-mode">
+        <option value="replace">Replace matching records (restoring/moving this instance)</option>
+        <option value="duplicate">Import as new copies (merge, never overwrites)</option>
+      </select>
+      <button class="primary" id="do-import">Import from .abyssal file&hellip;</button>
+      <div class="status" id="data-status"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Abyssal Scoring - Scoreboard</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    #board {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2vh;
+    }
+    #participant-name {
+      font-size: 6vh;
+      text-transform: uppercase;
+    }
+    #event-name {
+      font-size: 3vh;
+      opacity: 0.8;
+    }
+    #score {
+      font-size: 22vh;
+      line-height: 1;
+    }
+    #idle-message {
+      font-size: 4vh;
+      opacity: 0.6;
+    }
+    .hidden { display: none; }
+    #logo-corner {
+      position: fixed;
+      top: 3vh;
+      right: 3vh;
+      height: 12vh;
+    }
+  </style>
+</head>
+<body>
+  <img id="logo-corner" class="logo hidden" alt="" />
+  <div id="board">
+    <div id="idle-message" class="led-digits">ABYSSAL SCORING</div>
+    <div id="event-name" class="led-digits accent hidden"></div>
+    <div id="participant-name" class="led-digits hidden"></div>
+    <div id="score" class="led-digits hidden">--.--</div>
+  </div>
+
+  <script src="scoreboard.js"></script>
+</body>
+</html>
