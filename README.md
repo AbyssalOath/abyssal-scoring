@@ -182,5 +182,3 @@ edit it (and the matching `releaseBody` in `release.yml`) if you want
 ## License
 
 [GNU AGPLv3](LICENSE).
-
-See [CHANGELOG.md](CHANGELOG.md) for the full blow-by-blow.
