@@ -15,6 +15,34 @@ First tagged release. Everything below is pre-`v0.1.0` history, from
 initial scaffolding through getting the project ready for a public
 GitHub push.
 
+### Security
+- Bumped `sqlx` 0.7.4 → 0.8.6 (`crates/db/Cargo.toml`), fixing
+  [RUSTSEC-2024-0363](https://rustsec.org/advisories/RUSTSEC-2024-0363.html)
+  ("Binary Protocol Misinterpretation caused by Truncating or
+  Overflowing Casts", GHSA-xmrp-424f-vfpx) - a length-prefix overflow
+  in sqlx's wire protocol encoding, patched in 0.8.1+. The advisory's
+  demonstrated exploit is Postgres-specific and this project only
+  uses the `sqlite` feature, but there was no reason not to take the
+  fix. No code changes were needed - verified with `cargo
+  check`/`test --workspace` plus a throwaway smoke test that opens an
+  in-memory db and runs the real migrations against 0.8.6 before this
+  was committed.
+- **Known, currently unfixable**: Dependabot also flags
+  `glib` 0.18.5 for
+  [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html)
+  (unsound `Iterator`/`DoubleEndedIterator` impls on
+  `glib::VariantStrIter`, patched in glib 0.20+). `glib` isn't a
+  direct dependency - it comes in transitively via Tauri's Linux GTK
+  stack (`tauri` → `tauri-runtime-wry` → `tao`/`gtk`/`webkit2gtk`),
+  and `tauri-runtime-wry 2.11.4` (the version behind the latest
+  published `tauri 2.11.5`) pins `tao` to `^0.35.0`, which caps `gtk`
+  at 0.18.x and therefore `glib` at 0.18.x too - confirmed by trying
+  `cargo update -p tao --precise 0.37.0`, which cargo refuses for
+  exactly this reason. Fixing this requires an upstream Tauri release
+  that bumps its gtk-rs stack; nothing in this repo's Cargo.toml can
+  reach a patched `glib` today. Revisit by re-running `cargo update
+  -p tao --dry-run` after future Tauri upgrades.
+
 ### Added
 - GitHub Actions CI workflow (`.github/workflows/ci.yml`): `cargo
   check`/`test`/`clippy`/`fmt`, matrixed across Linux/macOS/Windows,
@@ -95,6 +123,19 @@ GitHub push.
   default for an application, as opposed to a library.
 
 ### Fixed
+- Release workflow (`release.yml`) failed on `ubuntu-22.04` with
+  `apt-get` exit code 100 - the Linux dependency list installed both
+  `libappindicator3-dev` and `libayatana-appindicator3-dev`, which
+  provide conflicting versions of the same headers
+  (`libayatana-appindicator3-dev : Conflicts: libappindicator3-dev`).
+  Trimmed the install list in both `ci.yml` and `release.yml` back
+  down to Tauri's own recommended minimal set (`libwebkit2gtk-4.1-dev
+  libappindicator3-dev librsvg2-dev patchelf`); the others weren't
+  needed anyway.
+- CI workflow (`ci.yml`) never ran at all - it triggered on
+  `branches: [main]`, but this repo's default branch is `master`.
+  Fixed the trigger; caught via `gh run list --workflow=ci.yml`
+  returning a 404 for "workflow not found on the default branch".
 - Blank/invisible control-panel window on Linux with certain GPU
   drivers (`Failed to create GBM buffer` in the WebKitGTK log) -
   worked around by disabling WebKitGTK's DMA-BUF renderer on Linux

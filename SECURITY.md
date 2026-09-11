@@ -57,3 +57,17 @@ Genuinely find something concerning here - a way to escalate from
 code execution via a crafted `.abyssal` file or image asset, a path
 traversal in the export/import asset handling, etc.) - that's exactly
 the kind of thing worth a private report.
+
+## Known dependency advisories
+
+- **`glib` 0.18.5 - [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html)**
+  (unsound `Iterator`/`DoubleEndedIterator` impls on
+  `glib::VariantStrIter`, patched in 0.20+). `glib` is transitive via
+  Tauri's Linux GTK stack, not a direct dependency, and the currently
+  published `tauri`/`tauri-runtime-wry` pins `tao` (and therefore
+  `gtk`/`glib`) below the patched version - there is no combination
+  of `Cargo.toml` edits in this repo that reaches a patched `glib`
+  today. Tracked; re-check after each Tauri upgrade (see
+  `CHANGELOG.md`'s `[0.1.0]` Security section for the exact
+  `cargo update` command that shows whether this has become
+  fixable).
