@@ -2,11 +2,11 @@
 
 mod commands;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use server::AppService;
 use tauri::Manager;
-use tokio::sync::Mutex;
 
 /// WebKitGTK's DMA-BUF render path fails to allocate a GBM buffer on
 /// a number of Linux GPU setups (NVIDIA proprietary drivers
@@ -22,7 +22,7 @@ fn disable_dmabuf_renderer_if_needed() {
 fn disable_dmabuf_renderer_if_needed() {}
 
 pub struct AppState {
-    pub service: Arc<Mutex<AppService>>,
+    pub service: Arc<AppService>,
 }
 
 fn main() {
@@ -44,10 +44,23 @@ fn main() {
             // async for.
             let service = tauri::async_runtime::block_on(AppService::open(&db_path))
                 .expect("failed to open local database");
+            let service = Arc::new(service);
 
-            app.manage(AppState {
-                service: Arc::new(Mutex::new(service)),
+            // Embedded HTTP + WebSocket API for judges' iPads (and,
+            // read-only, parent/spectator devices) on the local
+            // network. Reuses the tokio runtime Tauri already owns --
+            // no separate runtime to bootstrap. Binds on all
+            // interfaces (not just loopback) since other devices on
+            // the LAN need to reach it.
+            let live_service = service.clone();
+            tauri::async_runtime::spawn(async move {
+                let addr = SocketAddr::from(([0, 0, 0, 0], live_server::DEFAULT_PORT));
+                if let Err(e) = live_server::serve(live_service, addr).await {
+                    eprintln!("live-scoring server failed to start: {e}");
+                }
             });
+
+            app.manage(AppState { service });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -56,7 +69,14 @@ fn main() {
             commands::add_team,
             commands::set_team_colors,
             commands::add_participant,
+            commands::parse_roster_file,
+            commands::import_roster,
+            commands::list_roster_with_gymnast_detail,
             commands::add_judge,
+            commands::create_pairing_code,
+            commands::list_judge_devices,
+            commands::revoke_judge_device,
+            commands::get_live_server_info,
             commands::add_session,
             commands::add_event,
             commands::list_teams,

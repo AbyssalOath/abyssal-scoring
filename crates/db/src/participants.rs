@@ -7,7 +7,7 @@ use crate::util::parse_uuid;
 
 impl Db {
     pub async fn create_participant(&self, p: &Participant) -> DbResult<()> {
-        sqlx::query("INSERT INTO participants (id, competition_id, first_name, last_name, team_id, bib_number, level_or_category) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO participants (id, competition_id, first_name, last_name, team_id, bib_number, level_or_category, is_attending) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(p.id.0.to_string())
             .bind(p.competition_id.0.to_string())
             .bind(&p.first_name)
@@ -15,8 +15,25 @@ impl Db {
             .bind(p.team_id.map(|t| t.0.to_string()))
             .bind(&p.bib_number)
             .bind(&p.level_or_category)
+            .bind(p.is_attending)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn update_participant(&self, p: &Participant) -> DbResult<()> {
+        sqlx::query(
+            "UPDATE participants SET first_name = ?, last_name = ?, team_id = ?, bib_number = ?, level_or_category = ?, is_attending = ? WHERE id = ?",
+        )
+        .bind(&p.first_name)
+        .bind(&p.last_name)
+        .bind(p.team_id.map(|t| t.0.to_string()))
+        .bind(&p.bib_number)
+        .bind(&p.level_or_category)
+        .bind(p.is_attending)
+        .bind(p.id.0.to_string())
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -58,5 +75,6 @@ fn row_to_participant(row: &sqlx::sqlite::SqliteRow) -> DbResult<Participant> {
             .map(TeamId),
         bib_number: row.try_get("bib_number")?,
         level_or_category: row.try_get("level_or_category")?,
+        is_attending: row.try_get("is_attending")?,
     })
 }

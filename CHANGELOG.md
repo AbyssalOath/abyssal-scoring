@@ -7,7 +7,79 @@ once it has a first tagged release.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- **Roster import**: a new `roster_import` crate parses a TAAF-style
+  roster spreadsheet (`.xlsx`/`.xls`/`.csv`) or PDF into a reviewable
+  preview (auto-guessed column mapping, per-row warnings), which the
+  Roster tab lets you fix by hand (remap a column, edit a cell,
+  uncheck "Attending") before confirming. Confirmed rows upsert by
+  TAAF athlete # (`AppService::import_roster`), so re-importing an
+  updated weekly roster updates existing athletes in place instead of
+  duplicating them; rows without a TAAF # are always created fresh.
+- Wired up `GymnastDetail`/`gymnastics_details` end to end (schema
+  existed but had zero CRUD, service methods, or `.abyssal`
+  export/import support until now) and extended it with TAAF athlete
+  #, TAAF registration #, qual status, and the roster's "A&T" column
+  (stored verbatim - meaning unconfirmed).
+- `participants.is_attending` (generic, defaults to true) - lets a
+  meet-day roster exclude athletes who registered but aren't
+  attending, without deleting their record.
+- **Rotation Sheet** tab: attending athletes grouped by division or
+  gym, sorted by last name, with a print-only view (`window.print()` +
+  `@media print`) for handing out at a meet.
+- `crates/db/tests/roster_flow.rs`: integration tests against a real
+  in-memory SQLite connection covering the TAAF-number upsert path and
+  `.abyssal` backward compatibility for the new `gymnastics_details`
+  export field.
+- **Networked live judging (backend), "Live Judging (Beta)" tab**: a
+  new `live_server` crate embeds an axum HTTP + WebSocket API
+  (`127.0.0.1`/LAN, port 7878) so judges' iPads (a future native app)
+  can pair with a judge via a short-lived code shown on the desktop,
+  submit scores over REST using the same `AppService` methods and
+  scoring math as the desktop UI, and see the live scoreboard state
+  pushed over WebSocket (polls `AppService` per connection, sends only
+  on change - no shared broadcast channel needed, so it picks up
+  updates regardless of whether they came from a judge's iPad or the
+  desktop control panel). Judge identity/auth
+  (`pairing_codes`/`judge_devices` tables, bearer tokens stored only
+  as a SHA-256 hash) didn't exist before this. New "Live Judging"
+  control-panel tab: shows the server's LAN address, generates pairing
+  codes per judge, lists/revokes paired devices.
+- `crates/live_server/examples/smoke_server.rs`: seeds an in-memory
+  competition and serves the live-scoring API standalone, for manual
+  curl/websocat testing without launching the full Tauri app.
+- `AppService::open_in_memory()` - a `Db::open_in_memory()` counterpart
+  for tests that need a real `AppService` with no file on disk.
+- `GET /api/v1/competitions` (public) - a spectator app's competition
+  picker needed some way to discover what's running on a server
+  without already knowing a competition id.
+- **`ios/AbyssalLive`**: a SwiftUI iPad app (separate Xcode project,
+  outside this Cargo workspace) implementing both the judge-scoring
+  and spectator-viewing clients against the `live_server` API - pair
+  with a code, submit gymnastics/swimming scores, or just watch the
+  live scoreboard. Untested on real hardware/Xcode (this repo was
+  developed without access to a Mac); see `ios/README.md`. Wire
+  contract lives in `docs/LIVE_API.md`, the hand-maintained source of
+  truth for both sides since there's no schema codegen between Rust
+  and Swift.
+
+### Changed
+- `GET /competitions/:id/events` and `/participants`: dropped the
+  device-auth requirement added in the initial `live_server` cut -
+  discovered while building the spectator app that it had no way to
+  resolve participant/event names for display without one. Both are
+  the same schedule/roster info already shown publicly on the venue's
+  TV/rotation sheet, so making them public (like `/scoreboard`
+  already was) rather than adding spectator-specific auth was the
+  smaller, more consistent fix.
+- `AppState.service` (`src-tauri`): `Arc<Mutex<AppService>>` →
+  `Arc<AppService>`. Every `AppService` method was already `&self`
+  and safe to call concurrently (the underlying sqlx pool handles
+  its own concurrency) - the mutex was an artificial app-wide
+  serialization point imposed by the Tauri shell, not something
+  `AppService` itself needed, and would have queued every judge's
+  score submission behind whatever the desktop control panel
+  happened to be doing at that moment.
 
 ## [0.1.0] - 2026-09-10
 

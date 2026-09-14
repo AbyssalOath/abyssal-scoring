@@ -14,6 +14,10 @@ pub struct Participant {
     /// Bib / lane assignment / competitor number, sport-agnostic label.
     pub bib_number: Option<String>,
     pub level_or_category: Option<String>,
+    /// Whether this competitor is attending the current meet. Sport-
+    /// agnostic (any roster can have scratches), so it lives here
+    /// rather than on a sport-specific detail struct.
+    pub is_attending: bool,
 }
 
 impl Participant {
@@ -30,6 +34,7 @@ impl Participant {
             team_id: None,
             bib_number: None,
             level_or_category: None,
+            is_attending: true,
         }
     }
 

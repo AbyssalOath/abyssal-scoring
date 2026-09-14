@@ -35,6 +35,15 @@
     .row > div { flex: 1; }
     .status { margin-top: 10px; font-size: 13px; color: #555; }
     .swatch { display: inline-block; width: 16px; height: 16px; border-radius: 3px; vertical-align: middle; margin-right: 6px; border: 1px solid #999; }
+    #roster-import-table input[type="text"] { width: 100%; min-width: 90px; padding: 3px 4px; font-size: 12px; }
+    #roster-import-table select { padding: 2px; font-size: 11px; }
+    #roster-import-table th, #roster-import-table td { vertical-align: top; }
+    @media print {
+      header, nav, button, select#rotation-group-by, .status { display: none !important; }
+      main { display: block; }
+      section.panel { display: none !important; }
+      section.panel.active { display: block !important; padding: 0; max-width: none; }
+    }
   </style>
 </head>
 <body>
@@ -46,7 +55,9 @@
     <nav>
       <button data-panel="competitions" class="active">Competitions</button>
       <button data-panel="roster">Roster</button>
+      <button data-panel="rotation">Rotation Sheet</button>
       <button data-panel="schedule">Schedule</button>
+      <button data-panel="live-judging">Live Judging</button>
       <button data-panel="live">Live Scoring</button>
       <button data-panel="scoreboard">Scoreboard &amp; Theme</button>
       <button data-panel="data">Export / Import</button>
@@ -81,6 +92,28 @@
 
     <section id="roster" class="panel">
       <h2>Roster</h2>
+
+      <h3>Import roster (TAAF roster sheet)</h3>
+      <p style="font-size:13px; opacity:.75; margin:4px 0;">
+        Import first/last name, gym, TAAF athlete #, registration #, division, and qual status from a
+        spreadsheet (.xlsx/.xls/.csv) or PDF roster. Re-importing an updated roster later matches
+        existing athletes by their TAAF athlete # and updates them instead of creating duplicates.
+      </p>
+      <button type="button" class="secondary" id="roster-file-pick">Choose roster file&hellip;</button>
+      <span id="roster-file-name" style="font-size:12px; opacity:.7; margin-left:8px;"></span>
+
+      <div id="roster-import-preview" class="hidden">
+        <div class="status" id="roster-import-notes"></div>
+        <div style="overflow-x:auto;">
+          <table id="roster-import-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button class="primary" id="confirm-roster-import">Confirm import</button>
+        <div class="status" id="roster-import-status"></div>
+      </div>
+
       <h3>Team</h3>
       <div class="row">
         <div><label>Team name</label><input id="team-name" /></div>
@@ -123,6 +156,49 @@
         <thead><tr><th>Type</th><th>Name</th><th>Detail</th></tr></thead>
         <tbody></tbody>
       </table>
+    </section>
+
+    <section id="live-judging" class="panel">
+      <h2>Live Judging (Beta)</h2>
+      <p style="font-size:13px; opacity:.75; margin:4px 0;">
+        Judges' iPads connect to this computer over the local network and submit scores directly -
+        no separate app yet, but the same API a future iPad app will use. Requires this computer and
+        the iPad(s) to be on the same Wi-Fi/network.
+      </p>
+      <div class="status" id="live-server-address"></div>
+
+      <h3>Pair a judge's device</h3>
+      <div class="row">
+        <div>
+          <label>Judge</label>
+          <select id="pairing-judge"></select>
+        </div>
+      </div>
+      <button class="primary" id="generate-pairing-code">Generate pairing code</button>
+      <div class="status" id="pairing-code-status"></div>
+
+      <h3>Paired devices</h3>
+      <button class="secondary" id="refresh-devices">Refresh</button>
+      <table id="devices-table">
+        <thead><tr><th>Judge</th><th>Device</th><th>Paired</th><th>Last seen</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="rotation" class="panel">
+      <h2>Rotation Sheet</h2>
+      <div class="row">
+        <div>
+          <label>Group by</label>
+          <select id="rotation-group-by">
+            <option value="division">Division</option>
+            <option value="gym">Gym</option>
+          </select>
+        </div>
+      </div>
+      <button class="secondary" id="refresh-rotation">Refresh</button>
+      <button class="primary" id="print-rotation">Print</button>
+      <div id="rotation-sheet-content"></div>
     </section>
 
     <section id="schedule" class="panel">

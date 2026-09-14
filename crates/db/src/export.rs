@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use models::gymnastics::Routine;
+use models::gymnastics::{GymnastDetail, Routine};
 use models::{
     Competition, CompetitionId, Event, EventId, EventResult, Judge, JudgeId, Participant,
     ParticipantId, RankingEntry, RankingId, ResultId, Score, ScoreId, ScoreboardTheme, Session,
@@ -44,6 +44,8 @@ pub struct ExportBundle {
     pub scores: Vec<Score>,
     pub rankings: Vec<RankingEntry>,
     pub gymnastics_routines: Vec<Routine>,
+    #[serde(default)]
+    pub gymnastics_details: Vec<GymnastDetail>,
     /// original absolute/app-relative path -> bytes, for every logo /
     /// background image referenced by a theme or team.
     #[serde(skip)]
@@ -64,6 +66,10 @@ impl Db {
             bundle
                 .participants
                 .extend(self.list_participants(competition.id).await?);
+            bundle.gymnastics_details.extend(
+                self.list_gymnast_details_for_competition(competition.id)
+                    .await?,
+            );
             bundle
                 .judges
                 .extend(self.list_judges(competition.id).await?);
@@ -142,6 +148,9 @@ impl Db {
         for participant in &bundle.participants {
             self.import_participant_or_replace(participant).await?;
         }
+        for detail in &bundle.gymnastics_details {
+            self.import_gymnast_detail_or_replace(detail).await?;
+        }
         for judge in &bundle.judges {
             self.import_judge_or_replace(judge).await?;
         }
@@ -203,6 +212,10 @@ impl ExportBundle {
             participant.competition_id =
                 CompetitionId(remap(&mut map, participant.competition_id.0));
             participant.team_id = participant.team_id.map(|t| TeamId(remap(&mut map, t.0)));
+        }
+        for detail in &mut self.gymnastics_details {
+            detail.participant_id = ParticipantId(remap(&mut map, detail.participant_id.0));
+            detail.competition_id = CompetitionId(remap(&mut map, detail.competition_id.0));
         }
         for judge in &mut self.judges {
             judge.id = JudgeId(remap(&mut map, judge.id.0));

@@ -92,6 +92,7 @@ async function refreshRoster() {
   renderRosterTable();
   renderJudgePanelTable();
   populateLiveDropdowns();
+  populatePairingJudgeDropdown();
 }
 
 function renderRosterTable() {
@@ -145,7 +146,231 @@ document.getElementById("add-judge").addEventListener("click", async () => {
   judgesCache.push(judge);
   renderRosterTable();
   renderJudgePanelTable();
+  populatePairingJudgeDropdown();
 });
+
+// ---- Roster import ----
+const ROSTER_FIELDS = [
+  { value: "", label: "Ignore this column" },
+  { value: "first_name", label: "First name" },
+  { value: "last_name", label: "Last name" },
+  { value: "at_code", label: "A&T" },
+  { value: "gym", label: "Gym" },
+  { value: "taaf_athlete_number", label: "TAAF Athlete Competition #" },
+  { value: "taaf_registration_number", label: "TAAF Registration #" },
+  { value: "division", label: "Division" },
+  { value: "qual_status", label: "Qual Status" },
+];
+
+let rosterImportPreview = null;
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+document.getElementById("roster-file-pick").addEventListener("click", async () => {
+  if (!requireCompetition()) return;
+  const path = await open({
+    title: "Choose a roster file",
+    multiple: false,
+    directory: false,
+    filters: [{ name: "Roster", extensions: ["xlsx", "xls", "csv", "pdf"] }],
+  });
+  if (!path) return;
+
+  document.getElementById("roster-file-name").textContent = path.split("/").pop();
+  rosterImportPreview = await safeInvoke("parse_roster_file", { path });
+  renderRosterImportPreview();
+});
+
+function renderRosterImportPreview() {
+  const container = document.getElementById("roster-import-preview");
+  if (!rosterImportPreview) {
+    container.classList.add("hidden");
+    return;
+  }
+  container.classList.remove("hidden");
+  document.getElementById("roster-import-notes").textContent = rosterImportPreview.notes.join(" ");
+
+  const table = document.getElementById("roster-import-table");
+  const thead = table.querySelector("thead");
+  const tbody = table.querySelector("tbody");
+
+  const headerCells = rosterImportPreview.headers
+    .map((header, colIndex) => {
+      const mapped = rosterImportPreview.column_mapping[colIndex] || "";
+      const options = ROSTER_FIELDS.map(
+        (f) => `<option value="${f.value}" ${f.value === mapped ? "selected" : ""}>${f.label}</option>`
+      ).join("");
+      return `<th>${escapeHtml(header)}<br/><select class="roster-col-map" data-col="${colIndex}">${options}</select></th>`;
+    })
+    .join("");
+  thead.innerHTML = `<tr><th>Attending</th>${headerCells}<th>Warnings</th></tr>`;
+
+  tbody.innerHTML = rosterImportPreview.rows
+    .map((row, rowIndex) => {
+      const warnings = (rosterImportPreview.row_warnings[rowIndex] || []).join(", ");
+      const cells = row
+        .map(
+          (value, colIndex) =>
+            `<td><input type="text" class="roster-cell" data-row="${rowIndex}" data-col="${colIndex}" value="${escapeHtml(value)}" /></td>`
+        )
+        .join("");
+      return `<tr>
+        <td><input type="checkbox" class="roster-attending" data-row="${rowIndex}" checked /></td>
+        ${cells}
+        <td style="color:#a00; font-size:12px;">${escapeHtml(warnings)}</td>
+      </tr>`;
+    })
+    .join("");
+}
+
+document.getElementById("confirm-roster-import").addEventListener("click", async () => {
+  if (!requireCompetition() || !rosterImportPreview) return;
+
+  const colToField = {};
+  document.querySelectorAll(".roster-col-map").forEach((sel) => {
+    if (sel.value) colToField[Number(sel.dataset.col)] = sel.value;
+  });
+  if (!Object.values(colToField).includes("first_name") || !Object.values(colToField).includes("last_name")) {
+    return alert("Map at least the First name and Last name columns before importing.");
+  }
+
+  const rows = [];
+  for (let r = 0; r < rosterImportPreview.rows.length; r++) {
+    const attending = document.querySelector(`.roster-attending[data-row="${r}"]`).checked;
+    const values = {};
+    for (const [col, field] of Object.entries(colToField)) {
+      const input = document.querySelector(`.roster-cell[data-row="${r}"][data-col="${col}"]`);
+      values[field] = input.value.trim();
+    }
+    if (!values.first_name && !values.last_name) continue;
+    rows.push({
+      firstName: values.first_name || "",
+      lastName: values.last_name || "",
+      atCode: values.at_code || null,
+      gym: values.gym || null,
+      taafAthleteNumber: values.taaf_athlete_number || null,
+      taafRegistrationNumber: values.taaf_registration_number || null,
+      division: values.division || null,
+      qualStatus: values.qual_status || null,
+      isAttending: attending,
+    });
+  }
+  if (rows.length === 0) return alert("Nothing to import.");
+
+  const summary = await safeInvoke("import_roster", { competitionId: activeCompetitionId, rows });
+  document.getElementById("roster-import-status").textContent =
+    `Created ${summary.created}, updated ${summary.updated}, skipped ${summary.skipped}.` +
+    (summary.warnings.length ? ` Warnings: ${summary.warnings.join(" | ")}` : "");
+  await refreshRoster();
+});
+
+// ---- Live judging (device pairing) ----
+function populatePairingJudgeDropdown() {
+  const select = document.getElementById("pairing-judge");
+  select.innerHTML = judgesCache.map((j) => `<option value="${j.id}">${escapeHtml(j.name)} (${j.role})</option>`).join("");
+}
+
+document.getElementById("generate-pairing-code").addEventListener("click", async () => {
+  const judgeId = document.getElementById("pairing-judge").value;
+  if (!judgeId) return alert("Add a judge first (Roster tab).");
+  const pairing = await safeInvoke("create_pairing_code", { judgeId });
+  const expires = new Date(pairing.expires_at).toLocaleTimeString();
+  document.getElementById("pairing-code-status").textContent =
+    `Code: ${pairing.code} - enter this on the judge's iPad along with the server address below. Expires ${expires}.`;
+});
+
+document.getElementById("refresh-devices").addEventListener("click", async () => {
+  if (!requireCompetition()) return;
+  const devices = await safeInvoke("list_judge_devices", { competitionId: activeCompetitionId });
+  const tbody = document.querySelector("#devices-table tbody");
+  tbody.innerHTML = devices
+    .map((d) => {
+      const judge = judgesCache.find((j) => j.id === d.judge_id);
+      const paired = new Date(d.paired_at).toLocaleString();
+      const lastSeen = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "never";
+      return `<tr>
+        <td>${escapeHtml(judge ? judge.name : d.judge_id)}</td>
+        <td>${escapeHtml(d.device_name)}</td>
+        <td>${paired}</td>
+        <td>${lastSeen}</td>
+        <td><button class="secondary" data-device-id="${d.id}">Revoke</button></td>
+      </tr>`;
+    })
+    .join("");
+  tbody.querySelectorAll("button[data-device-id]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await safeInvoke("revoke_judge_device", { deviceId: btn.dataset.deviceId });
+      document.getElementById("refresh-devices").click();
+    });
+  });
+});
+
+(async () => {
+  const info = await safeInvoke("get_live_server_info");
+  document.getElementById("live-server-address").textContent = info.lan_ip
+    ? `Judges' iPads connect to: http://${info.lan_ip}:${info.port}`
+    : `Could not detect this computer's network address automatically - find it in your OS network settings and use port ${info.port}.`;
+})();
+
+// ---- Rotation sheet ----
+let rotationEntriesCache = [];
+
+document.getElementById("refresh-rotation").addEventListener("click", async () => {
+  if (!requireCompetition()) return;
+  rotationEntriesCache = await safeInvoke("list_roster_with_gymnast_detail", { competitionId: activeCompetitionId });
+  renderRotationSheet();
+});
+document.getElementById("rotation-group-by").addEventListener("change", renderRotationSheet);
+document.getElementById("print-rotation").addEventListener("click", () => window.print());
+
+function renderRotationSheet() {
+  const container = document.getElementById("rotation-sheet-content");
+  const groupBy = document.getElementById("rotation-group-by").value;
+  const attending = rotationEntriesCache.filter((e) => e.participant.is_attending);
+
+  const groups = new Map();
+  for (const entry of attending) {
+    const key =
+      groupBy === "gym"
+        ? (entry.gymnastDetail && entry.gymnastDetail.club) || "(no gym listed)"
+        : entry.participant.level_or_category || "(no division listed)";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
+  }
+
+  const sortedKeys = Array.from(groups.keys()).sort();
+  container.innerHTML =
+    sortedKeys
+      .map((key) => {
+        const rows = groups
+          .get(key)
+          .sort((a, b) => a.participant.last_name.localeCompare(b.participant.last_name))
+          .map((entry) => {
+            const detail = entry.gymnastDetail || {};
+            return `<tr>
+              <td>${escapeHtml(entry.participant.first_name)}</td>
+              <td>${escapeHtml(entry.participant.last_name)}</td>
+              <td>${escapeHtml(detail.club || "")}</td>
+              <td>${escapeHtml(detail.taaf_athlete_number || "")}</td>
+            </tr>`;
+          })
+          .join("");
+        return `
+          <h3>${escapeHtml(key)}</h3>
+          <table>
+            <thead><tr><th>First</th><th>Last</th><th>Gym</th><th>TAAF #</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      })
+      .join("") || "<p>No attending athletes to show. Import a roster or add participants first.</p>";
+}
 
 // ---- Schedule ----
 async function refreshSchedule() {

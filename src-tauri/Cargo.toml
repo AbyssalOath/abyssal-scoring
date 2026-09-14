@@ -18,6 +18,8 @@ models = { path = "../crates/models" }
 scoring = { path = "../crates/scoring" }
 db = { path = "../crates/db" }
 server = { path = "../crates/server" }
+roster_import = { path = "../crates/roster_import" }
+live_server = { path = "../crates/live_server" }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

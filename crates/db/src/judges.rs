@@ -18,6 +18,15 @@ impl Db {
         Ok(())
     }
 
+    pub async fn get_judge(&self, id: JudgeId) -> DbResult<Judge> {
+        let row = sqlx::query("SELECT * FROM judges WHERE id = ?")
+            .bind(id.0.to_string())
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(crate::error::DbError::NotFound)?;
+        row_to_judge(&row)
+    }
+
     pub async fn list_judges(&self, competition_id: CompetitionId) -> DbResult<Vec<Judge>> {
         let rows = sqlx::query("SELECT * FROM judges WHERE competition_id = ? ORDER BY name")
             .bind(competition_id.0.to_string())

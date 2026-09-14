@@ -1,7 +1,9 @@
 [workspace]
 members = [
 	"crates/db",
+	"crates/live_server",
 	"crates/models",
+	"crates/roster_import",
 	"crates/scoring",
 	"crates/server",
 	"src-tauri",

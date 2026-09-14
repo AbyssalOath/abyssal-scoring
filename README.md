@@ -39,8 +39,18 @@ crates/
 │              export/import format, with a choice of import modes.
 │              One file per competition instance, no server required.
 │
-└── server/    AppService: the orchestration layer everything above
-               is wired together behind. This is what the UI calls.
+├── roster_import/ Parses a roster spreadsheet (.xlsx/.xls/.csv) or
+│              PDF into a reviewable preview - column mapping guesses
+│              + per-row warnings, never writes to the database itself.
+│
+├── server/    AppService: the orchestration layer everything above
+│              is wired together behind. This is what every UI (the
+│              desktop app, and live_server below) calls.
+│
+└── live_server/ Embedded HTTP + WebSocket API (axum) so judges'
+               iPads can pair, submit scores, and see the live
+               scoreboard pushed over the local network - LAN-only,
+               no relay/internet component. See ARCHITECTURE.md.
 
 src-tauri/     The Tauri v2 desktop app shell: control-panel window +
                a dynamically opened scoreboard display window, native
@@ -92,7 +102,15 @@ launch it full-screen directly.
 The SQLite database lives in the OS's standard app-data directory
 (wherever Tauri's `app.path().app_data_dir()` resolves to per
 platform), as `abyssal.sqlite`. Nothing else needs to run - no
-Docker, no separate server process.
+Docker, no separate server process to start by hand.
+
+The app does listen on the local network (port 7878 by default) for
+the "Live Judging" feature - judges' devices submitting scores and
+seeing the live scoreboard. This is the same process, not a separate
+one to manage, but expect a first-run OS firewall prompt (Windows
+Defender / macOS Application Firewall) to allow it. See "Live Judging
+(Beta)" in the control panel and [ARCHITECTURE.md](ARCHITECTURE.md)
+for how it's authenticated.
 
 **Linux note:** on some GPU setups (NVIDIA especially) WebKitGTK's
 accelerated rendering fails silently and leaves the window blank.
@@ -122,6 +140,12 @@ Linux to route around this - see the comment above
   results and scores are all left alone. Reopening the app re-reads
   that same pointer and restores the previously active competition,
   so it picks up where it left off unless you explicitly clear it.
+- **Roster import**: import a TAAF-style roster (.xlsx/.xls/.csv or
+  PDF) - auto-guesses the column mapping, lets you fix it and mark who
+  isn't attending before confirming, then upserts by TAAF athlete #
+  so a re-sent weekly roster updates existing athletes instead of
+  duplicating them. A "Rotation Sheet" tab shows attending athletes
+  grouped by division or gym, with a print-friendly view.
 - Theme editor: pick a preset or dial in your own background/primary/
   accent colors, background image, and logo - both picked via native
   file dialogs, filtered to image files. Default is the "Old School
@@ -139,9 +163,25 @@ Linux to route around this - see the comment above
 - Basic client-side validation on every form (required names, date
   format, non-negative scores/times/deductions) plus a catch-all that
   surfaces any backend error via an alert instead of failing silently.
+- **Live Judging (Beta)**: pair a device to a judge with a short-lived
+  code, then submit gymnastics/swimming scores over the local
+  network's REST API exactly as the desktop UI would - same scoring
+  math, same "goes straight to the live scoreboard" behavior. No
+  native iPad app exists yet (see below); this is the backend/API
+  layer, directly testable with curl/websocat today.
 
 ## What's stubbed or missing (next steps)
 
+- **The native iPad app (`ios/AbyssalLive`) exists but is unbuilt and
+  untested.** It's a real SwiftUI app - judge pairing/scoring and a
+  spectator scoreboard view, against the same `live_server` API a
+  `curl` request already exercises - but it was written without access
+  to a Mac/Xcode/Swift toolchain, so treat it as a scaffold to open,
+  build, and shake out in Xcode rather than verified working code (the
+  Rust side has real automated tests; the Swift side doesn't yet). See
+  [`ios/README.md`](ios/README.md). Neither role supports viewing from
+  off the venue's network - that would need a hosted relay component,
+  a deliberately separate, not-yet-decided piece of work.
 - **Windows/macOS builds are untested by hand.** Only Linux (Arch) has
   been run through end-to-end manual testing so far. The release
   workflow below builds all three platforms in CI, but nobody has

@@ -43,6 +43,49 @@ mix with anything real. See the README for where that lives per OS.
 - [ ] Add several judges with different roles
 - [ ] Adding a judge with an empty name is rejected
 
+## Roster import (TAAF roster sheet)
+
+- [ ] Import a real TAAF roster `.xlsx` - the banner row ("email
+      inquiries to...") is skipped, headers are recognized and
+      auto-mapped correctly (First/Last name, A&T, Gym, TAAF Athlete
+      Competition #, Registration #, Division, Qual Status)
+- [ ] Import the same `.csv` export of that roster - same result
+- [ ] Import a `.pdf` version of the roster - a note about the parse
+      being approximate is shown, and every row is manually verified
+      before confirming (this format is inherently lossy - don't trust
+      it blind)
+- [ ] Manually remap a column via its dropdown and edit a cell value
+      before confirming - the edited values, not the auto-detected
+      ones, are what gets imported
+- [ ] Uncheck "Attending" on a row, confirm the import summary and
+      that the rotation sheet excludes that athlete afterward
+- [ ] Re-import the same file unchanged - summary shows `0 created,
+      N updated` (no duplicate participants created)
+- [ ] Re-import an updated roster (some athletes removed/added,
+      others' division changed) - existing athletes update in place by
+      TAAF athlete #, new ones are created, removed-from-roster
+      athletes are left alone (still attending unless unchecked by
+      hand)
+- [ ] A row missing a TAAF athlete # still imports, with a warning
+      that a future re-import can't match it automatically
+- [ ] Confirm `gymnastics_details` (TAAF #s, division, qual status)
+      round-trips through a full `.abyssal` export/import
+- [x] "A&T" column meaning confirmed with the coach: usually blank,
+      nobody's sure what it stands for - stored verbatim, no further
+      action needed unless that changes
+- [ ] Import a ProScore-exported athlete list ("Athlete #" header
+      instead of "TAAF Athlete Competition #") - still auto-maps to
+      the TAAF athlete number column
+
+## Rotation sheet
+
+- [ ] With attendance/roster data imported, open Rotation Sheet, group
+      by Division - athletes appear grouped and sorted by last name
+- [ ] Switch grouping to Gym - regroups correctly
+- [ ] Non-attending athletes never appear
+- [ ] Print (or print-preview) - only the rotation sheet content shows,
+      not the nav/header/other panels
+
 ## Schedule
 
 - [ ] Add multiple events with different order values
@@ -91,6 +134,36 @@ mix with anything real. See the README for where that lives per OS.
       confirm the roster/schedule/results are **unchanged** afterward
       (this is the whole point of that button - verify it, don't just
       trust it)
+
+## Live judging (networked, backend/API only - no iPad app yet)
+
+- [x] Automated: `cargo test -p live_server` covers pairing, auth
+      rejection/acceptance, score submission + scoreboard push, and a
+      real WebSocket connection receiving pushes on state change.
+- [x] Manual, via `cargo run -p live_server --example smoke_server` +
+      curl/websocat against a real socket: health check, pair, 401
+      without a token, 401 with a bad token, authenticated event
+      listing, gymnastics score submission (single-judge auto-fill of
+      `judgeId` from the authenticated device), scoreboard read.
+- [ ] From the real desktop app: open "Live Judging", confirm the LAN
+      address shown is actually reachable from another device on the
+      same network (not just `localhost`)
+- [ ] Generate a pairing code for a judge, redeem it from a second
+      machine/device via curl on the same network within the 10-minute
+      window - confirm it works, and that trying the same code again
+      fails
+- [ ] Let a pairing code sit unused past 10 minutes - confirm it's
+      rejected as expired
+- [ ] Revoke a paired device from "Live Judging" - confirm its token
+      is rejected on the next request
+- [ ] Submit a score via the live API while the desktop's scoreboard
+      display window is open - confirm it updates (currently via the
+      display's existing 500ms poll, not yet wired to this API's push)
+- [ ] First run: confirm the OS firewall prompt (Windows Defender /
+      macOS Application Firewall) appears and allowing it lets other
+      devices actually connect
+- [ ] Restart the app - previously paired devices still authenticate
+      (tokens are persisted in SQLite, not held only in memory)
 
 ## Export / import
 

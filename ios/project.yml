@@ -1,0 +1,40 @@
+name: AbyssalLive
+options:
+  bundleIdPrefix: com.abyssalscoring
+  deploymentTarget:
+    iOS: "16.0"
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+targets:
+  AbyssalLive:
+    type: application
+    platform: iOS
+    sources:
+      - path: AbyssalLive
+    info:
+      path: AbyssalLive/Info.plist
+      properties:
+        CFBundleDisplayName: Abyssal Live
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocalNetworkUsageDescription: "Abyssal Live connects to the scoring computer over your local Wi-Fi network to submit scores and show live results. It never connects to the internet."
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.abyssalscoring.AbyssalLive
+        CODE_SIGN_STYLE: Automatic

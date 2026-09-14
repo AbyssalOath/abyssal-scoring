@@ -6,6 +6,9 @@ use models::{
     ScoreboardState, ScoreboardTheme, Session, Sport, Team, TeamId,
 };
 
+use roster_import::{ParsedRosterPreview, RosterRow};
+use server::{RosterEntry, RosterImportSummary};
+
 use crate::AppState;
 
 /// Every command maps `ServiceError` -> `String` because Tauri needs
@@ -19,7 +22,7 @@ fn map_err<E: std::fmt::Display>(e: E) -> String {
 
 #[tauri::command]
 pub async fn list_competitions(state: tauri::State<'_, AppState>) -> CmdResult<Vec<Competition>> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.list_competitions().await.map_err(map_err)
 }
 
@@ -30,7 +33,7 @@ pub async fn create_competition(
     sport: Sport,
     date: chrono::NaiveDate,
 ) -> CmdResult<Competition> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .create_competition(&name, sport, date)
         .await
@@ -43,7 +46,7 @@ pub async fn add_team(
     competition_id: CompetitionId,
     name: String,
 ) -> CmdResult<Team> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .add_team(competition_id, &name)
         .await
@@ -58,7 +61,7 @@ pub async fn set_team_colors(
     secondary: Option<String>,
     logo_path: Option<String>,
 ) -> CmdResult<()> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .set_team_colors(team_id, primary, secondary, logo_path)
         .await
@@ -72,9 +75,45 @@ pub async fn add_participant(
     first_name: String,
     last_name: String,
 ) -> CmdResult<Participant> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .add_participant(competition_id, &first_name, &last_name)
+        .await
+        .map_err(map_err)
+}
+
+/// Parses a roster file (xlsx/xls/csv/pdf) into a reviewable preview.
+/// Never writes anything -- see `import_roster` for the commit step.
+#[tauri::command]
+pub async fn parse_roster_file(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> CmdResult<ParsedRosterPreview> {
+    let service = &state.service;
+    service.parse_roster_file(&path).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn import_roster(
+    state: tauri::State<'_, AppState>,
+    competition_id: CompetitionId,
+    rows: Vec<RosterRow>,
+) -> CmdResult<RosterImportSummary> {
+    let service = &state.service;
+    service
+        .import_roster(competition_id, rows)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn list_roster_with_gymnast_detail(
+    state: tauri::State<'_, AppState>,
+    competition_id: CompetitionId,
+) -> CmdResult<Vec<RosterEntry>> {
+    let service = &state.service;
+    service
+        .list_roster_with_gymnast_detail(competition_id)
         .await
         .map_err(map_err)
 }
@@ -86,11 +125,65 @@ pub async fn add_judge(
     name: String,
     role: JudgeRole,
 ) -> CmdResult<Judge> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .add_judge(competition_id, &name, role)
         .await
         .map_err(map_err)
+}
+
+/// Generates a short-lived code for a judge to enter on their iPad in
+/// the "Live Judging" tab, pairing it to submit scores as that judge.
+#[tauri::command]
+pub async fn create_pairing_code(
+    state: tauri::State<'_, AppState>,
+    judge_id: models::JudgeId,
+) -> CmdResult<models::PairingCode> {
+    let service = &state.service;
+    service.create_pairing_code(judge_id).await.map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn list_judge_devices(
+    state: tauri::State<'_, AppState>,
+    competition_id: CompetitionId,
+) -> CmdResult<Vec<models::JudgeDevice>> {
+    let service = &state.service;
+    service
+        .list_judge_devices(competition_id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn revoke_judge_device(
+    state: tauri::State<'_, AppState>,
+    device_id: models::JudgeDeviceId,
+) -> CmdResult<()> {
+    let service = &state.service;
+    service
+        .revoke_judge_device(device_id)
+        .await
+        .map_err(map_err)
+}
+
+#[derive(serde::Serialize)]
+pub struct LiveServerInfo {
+    /// `None` if it couldn't be determined (no active network
+    /// interface, etc.) - the coach can find it another way (System
+    /// Settings, `ipconfig`/`ip addr`) in that case.
+    pub lan_ip: Option<String>,
+    pub port: u16,
+}
+
+/// Address/port for the pairing screen to show (as text, and to embed
+/// in a QR code later) so a judge's iPad knows where to connect.
+#[tauri::command]
+pub fn get_live_server_info() -> CmdResult<LiveServerInfo> {
+    Ok(LiveServerInfo {
+        lan_ip: live_server::local_lan_ip(),
+        port: live_server::DEFAULT_PORT,
+    })
 }
 
 #[tauri::command]
@@ -100,7 +193,7 @@ pub async fn add_session(
     name: String,
     order_index: i32,
 ) -> CmdResult<Session> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .add_session(competition_id, &name, order_index)
         .await
@@ -114,7 +207,7 @@ pub async fn add_event(
     name: String,
     order_index: i32,
 ) -> CmdResult<models::Event> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .add_event(competition_id, &name, order_index)
         .await
@@ -126,7 +219,7 @@ pub async fn list_teams(
     state: tauri::State<'_, AppState>,
     competition_id: CompetitionId,
 ) -> CmdResult<Vec<Team>> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.list_teams(competition_id).await.map_err(map_err)
 }
 
@@ -135,7 +228,7 @@ pub async fn list_participants(
     state: tauri::State<'_, AppState>,
     competition_id: CompetitionId,
 ) -> CmdResult<Vec<Participant>> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .list_participants(competition_id)
         .await
@@ -147,7 +240,7 @@ pub async fn list_judges(
     state: tauri::State<'_, AppState>,
     competition_id: CompetitionId,
 ) -> CmdResult<Vec<Judge>> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.list_judges(competition_id).await.map_err(map_err)
 }
 
@@ -156,7 +249,7 @@ pub async fn list_events(
     state: tauri::State<'_, AppState>,
     competition_id: CompetitionId,
 ) -> CmdResult<Vec<models::Event>> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.list_events(competition_id).await.map_err(map_err)
 }
 
@@ -165,7 +258,7 @@ pub async fn get_scoreboard_state(
     state: tauri::State<'_, AppState>,
     competition_id: CompetitionId,
 ) -> CmdResult<ScoreboardState> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .get_scoreboard_state(competition_id)
         .await
@@ -179,7 +272,7 @@ pub async fn set_current_participant(
     event_id: EventId,
     participant_id: ParticipantId,
 ) -> CmdResult<ScoreboardState> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .set_current_participant(competition_id, event_id, participant_id)
         .await
@@ -194,7 +287,7 @@ pub async fn show_result_on_scoreboard(
     participant_id: ParticipantId,
     live_value: serde_json::Value,
 ) -> CmdResult<ScoreboardState> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .show_result_on_scoreboard(competition_id, event_id, participant_id, live_value)
         .await
@@ -208,7 +301,7 @@ pub async fn clear_scoreboard(
     state: tauri::State<'_, AppState>,
     competition_id: CompetitionId,
 ) -> CmdResult<ScoreboardState> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .clear_scoreboard(competition_id)
         .await
@@ -225,7 +318,7 @@ pub async fn submit_gymnastics_panel_score(
     judge_scores: Vec<server::JudgeDeductions>,
     neutral_deductions: f64,
 ) -> CmdResult<models::EventResult> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     let (result, _routine, _scores) = service
         .submit_gymnastics_panel_score(
             event_id,
@@ -248,7 +341,7 @@ pub async fn submit_swimming_result(
     elapsed_seconds: f64,
     time_penalty_seconds: f64,
 ) -> CmdResult<models::EventResult> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .submit_swimming_result(
             event_id,
@@ -265,13 +358,13 @@ pub async fn get_participant(
     state: tauri::State<'_, AppState>,
     id: ParticipantId,
 ) -> CmdResult<Participant> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.get_participant(id).await.map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn get_event(state: tauri::State<'_, AppState>, id: EventId) -> CmdResult<models::Event> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.get_event(id).await.map_err(map_err)
 }
 
@@ -280,7 +373,7 @@ pub async fn resolve_theme(
     state: tauri::State<'_, AppState>,
     competition_id: CompetitionId,
 ) -> CmdResult<ScoreboardTheme> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.resolve_theme(competition_id).await.map_err(map_err)
 }
 
@@ -290,7 +383,7 @@ pub async fn set_theme(
     competition_id: CompetitionId,
     theme: ScoreboardTheme,
 ) -> CmdResult<()> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .set_theme(competition_id, theme)
         .await
@@ -299,7 +392,7 @@ pub async fn set_theme(
 
 #[tauri::command]
 pub async fn export_data(state: tauri::State<'_, AppState>, path: String) -> CmdResult<()> {
-    let service = state.service.lock().await;
+    let service = &state.service;
     service.export_to(&path).await.map_err(map_err)
 }
 
@@ -313,7 +406,7 @@ pub async fn import_data(
         "duplicate" => db::export::ImportMode::DuplicateAsNew,
         _ => db::export::ImportMode::Replace,
     };
-    let service = state.service.lock().await;
+    let service = &state.service;
     service
         .import_from(&path, import_mode)
         .await

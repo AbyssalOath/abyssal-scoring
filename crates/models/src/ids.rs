@@ -58,3 +58,4 @@ define_id!(ResultId);
 define_id!(ScoreId);
 define_id!(RankingId);
 define_id!(ThemeId);
+define_id!(JudgeDeviceId);

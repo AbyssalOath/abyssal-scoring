@@ -3,7 +3,7 @@
 //! file twice (or importing into an instance that already has some of
 //! this data) is safe instead of erroring on a primary-key conflict.
 
-use models::gymnastics::Routine;
+use models::gymnastics::{GymnastDetail, Routine};
 use models::{
     Competition, Event, EventResult, Judge, Participant, Score, ScoreboardTheme, Session, Team,
 };
@@ -61,7 +61,7 @@ impl Db {
     }
 
     pub(crate) async fn import_participant_or_replace(&self, p: &Participant) -> DbResult<()> {
-        sqlx::query("INSERT OR REPLACE INTO participants (id, competition_id, first_name, last_name, team_id, bib_number, level_or_category) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT OR REPLACE INTO participants (id, competition_id, first_name, last_name, team_id, bib_number, level_or_category, is_attending) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(p.id.0.to_string())
             .bind(p.competition_id.0.to_string())
             .bind(&p.first_name)
@@ -69,8 +69,27 @@ impl Db {
             .bind(p.team_id.map(|t| t.0.to_string()))
             .bind(&p.bib_number)
             .bind(&p.level_or_category)
+            .bind(p.is_attending)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn import_gymnast_detail_or_replace(&self, g: &GymnastDetail) -> DbResult<()> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO gymnastics_details (participant_id, competition_id, level, club, taaf_athlete_number, taaf_registration_number, qual_status, at_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(g.participant_id.0.to_string())
+        .bind(g.competition_id.0.to_string())
+        .bind(&g.level)
+        .bind(&g.club)
+        .bind(&g.taaf_athlete_number)
+        .bind(&g.taaf_registration_number)
+        .bind(&g.qual_status)
+        .bind(&g.at_code)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 

@@ -9,4 +9,6 @@ pub mod ranking;
 pub mod service;
 
 pub use error::{ServiceError, ServiceResult};
-pub use service::{AppService, JudgeDeductions};
+pub use service::{AppService, JudgeDeductions, RosterEntry, RosterImportSummary};
+
+pub use models::{JudgeDevice, PairingCode};

@@ -215,6 +215,76 @@ overwriting, at the cost of not detecting "this is actually the same
 competition." That's a reasonable trade-off for now; revisit if
 someone actually needs true merge semantics.
 
+## Networked live judging (`live_server`)
+
+`crates/live_server` is a separate crate from `server` on purpose:
+axum/tokio-networking dependencies don't belong in the orchestration
+layer, and keeping it separate means the whole HTTP/WS API is unit
+testable (`tower::ServiceExt::oneshot`, or a real socket + a real WS
+client - see `crates/live_server/tests/api.rs`) without booting Tauri
+at all. `src-tauri/src/main.rs`'s `.setup()` spawns
+`live_server::serve(..)` via `tauri::async_runtime::spawn`, reusing the
+tokio runtime Tauri already owns rather than starting a second one.
+
+**`AppState` is `Arc<AppService>`, not `Arc<Mutex<AppService>>`.**
+Every `AppService` method takes `&self` and the underlying sqlx pool
+already handles its own concurrency; the mutex that used to wrap it in
+`src-tauri` was an app-wide serialization point imposed by the Tauri
+shell, not something `AppService` needed. It had to go before adding
+judge traffic that would otherwise queue behind whatever the desktop
+control panel happened to be doing.
+
+**Judge identity/auth** didn't exist before this (`Judge` has no
+password/token/device concept of its own). Two new generic tables
+(judge identity isn't sport-specific):
+- `pairing_codes` - a short-lived (10 minute), desktop-generated code
+  a judge enters on their device once.
+- `judge_devices` - the long-lived credential that code exchanges for.
+  Only a SHA-256 hash of the token is ever stored; the plaintext is
+  handed back exactly once, at pairing time
+  (`AppService::redeem_pairing_code`), the same way a password reset
+  link works.
+
+**REST, not WebSocket, for judges submitting scores** - simpler and
+retryable on a flaky Wi-Fi connection, and it's the same
+`AppService::submit_gymnastics_panel_score` /
+`submit_swimming_result` the desktop control panel calls, so scoring
+math and ranking recompute can't drift between the two clients. A
+score submission over this API also calls
+`show_result_on_scoreboard` immediately afterward, matching the
+desktop's "Submit score" button doing both in one action rather than
+requiring a separate "now show it" step.
+
+**WebSocket is poll-based, not a shared broadcast channel.** Each
+`/api/v1/ws/scoreboard/:id` connection independently polls
+`AppService::get_scoreboard_state` (same 500ms interval
+`frontend/scoreboard.js` already uses) and only sends a message when
+`updated_at` changes. This was a deliberate simplification over
+threading a `tokio::sync::broadcast::Sender` through `AppService`: it
+needs zero changes to `server` or `commands.rs`, and it picks up a
+scoreboard change regardless of whether it came from a judge's iPad
+(via this crate) or the desktop control panel (which never talks to
+`live_server` at all) - there's exactly one source of truth
+(`scoreboard_state`), and every client just watches it. The endpoint
+is public/unauthenticated, same as `GET /api/v1/scoreboard/:id` - it's
+the same thing already shown on the TV, not sensitive.
+
+**LAN-only, by design.** There's no port-forwarding, relay, or public
+TLS anywhere in this crate. True internet-wide remote viewing (parents
+off the venue's Wi-Fi) would need a hosted relay component - a
+materially different, non-local-first architecture from the rest of
+this app - and is a deliberately separate, not-yet-decided piece of
+future work, not an oversight here.
+
+**Native client: `ios/AbyssalLive`, a separate Xcode project outside
+this Cargo workspace.** `crates/live_server` is independently tested
+(`crates/live_server/tests/api.rs`); the Swift app consuming it is
+not, and was written without access to a Mac/Xcode - see
+`ios/README.md` for its actual status and known gaps before assuming
+it just works. `docs/LIVE_API.md` is the hand-maintained wire contract
+both sides are built against; keep it in sync with any route/JSON
+shape change here.
+
 ## Adding a new sport (a worked example)
 
 Swimming is the real, completed example of this. To add a sport that
@@ -261,10 +331,22 @@ need this - swimming didn't.
   time wins; something rubric/checklist-based, or something
   distance/height-based, would be a better stress test than a third
   time-based sport).
-- No automated integration tests - `scoring` has real unit test
-  coverage, but `db`/`server`/the Tauri command layer are only
-  covered by manual testing (see `WHAT_TO_TEST.md`).
+- Growing automated coverage, but still partial - `scoring` has real
+  unit tests, `db` and `live_server` now have integration tests
+  against real (in-memory/socket) backends, but the Tauri command
+  layer itself is still only covered by manual testing (see
+  `WHAT_TO_TEST.md`).
 - `DisplayMode::ShowingRanking` exists in the type but nothing in the
   UI sets it yet - standings are computed and stored
   (`recompute_rankings`) but there's no "show the leaderboard on the
   big screen" button.
+- Judge device tokens (`judge_devices.token_hash`) never expire on
+  their own - a device stays paired until someone revokes it from the
+  "Live Judging" tab. Fine for a single meet's judge panel; would want
+  an explicit expiry if devices were reused across many
+  organizations/events.
+- `AppService::create_pairing_code` doesn't retry on a code collision
+  (two valid, unexpired 6-digit codes landing on the same value) -
+  deliberately, since it's astronomically unlikely with the handful of
+  judges pairing at any one meet, but worth revisiting if that
+  assumption ever stops holding.

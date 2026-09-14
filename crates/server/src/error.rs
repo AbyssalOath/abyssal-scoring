@@ -10,6 +10,14 @@ pub enum ServiceError {
     UnsupportedSport(models::Sport),
     #[error("routine not found for result")]
     RoutineNotFound,
+    #[error(transparent)]
+    RosterImport(#[from] roster_import::RosterImportError),
+    #[error("pairing code not found or already used")]
+    PairingCodeInvalid,
+    #[error("pairing code expired")]
+    PairingCodeExpired,
+    #[error("invalid or revoked device token")]
+    Unauthorized,
 }
 
 pub type ServiceResult<T> = Result<T, ServiceError>;

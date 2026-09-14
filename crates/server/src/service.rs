@@ -2,15 +2,19 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use db::Db;
-use models::gymnastics::{Apparatus, Deduction, Routine};
+use models::gymnastics::{Apparatus, Deduction, GymnastDetail, Routine};
 use models::{
-    Competition, CompetitionId, DisplayMode, Event, EventId, EventResult, Judge, JudgeId,
-    JudgeRole, Participant, ParticipantId, RankingEntry, Score, ScoreboardState, ScoreboardTheme,
-    Session, Sport, Team, TeamId,
+    Competition, CompetitionId, DisplayMode, Event, EventId, EventResult, Judge, JudgeDevice,
+    JudgeDeviceId, JudgeId, JudgeRole, PairingCode, Participant, ParticipantId, RankingEntry,
+    Score, ScoreboardState, ScoreboardTheme, Session, Sport, Team, TeamId,
 };
+use rand::distributions::Alphanumeric;
+use rand::Rng;
+use roster_import::{ParsedRosterPreview, RosterRow};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-use crate::error::ServiceResult;
+use crate::error::{ServiceError, ServiceResult};
 use crate::ranking::{higher_is_better, rank_results};
 
 /// Everything the Tauri commands / any future UI (desktop, tablet,
@@ -33,12 +37,42 @@ pub struct JudgeDeductions {
     pub deductions: Vec<Deduction>,
 }
 
+/// One row of the rotation sheet / roster view: a participant plus
+/// whatever gymnastics-specific detail (TAAF #s, division, qual
+/// status) has been recorded for them, if any.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RosterEntry {
+    pub participant: Participant,
+    pub gymnast_detail: Option<GymnastDetail>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RosterImportSummary {
+    pub created: usize,
+    pub updated: usize,
+    pub skipped: usize,
+    pub warnings: Vec<String>,
+}
+
 impl AppService {
     pub async fn open(db_path: impl AsRef<Path>) -> ServiceResult<Self> {
         let db = Db::open(&db_path).await?;
         Ok(Self {
             db,
             db_path: db_path.as_ref().to_path_buf(),
+        })
+    }
+
+    /// For tests (in this crate and downstream, e.g. `live_server`)
+    /// that need a real `AppService` without a database file on disk.
+    /// `export_to`/`import_from` won't resolve a sensible asset
+    /// directory against an empty path, but nothing else cares.
+    pub async fn open_in_memory() -> ServiceResult<Self> {
+        Ok(Self {
+            db: Db::open_in_memory().await?,
+            db_path: PathBuf::new(),
         })
     }
 
@@ -121,6 +155,202 @@ impl AppService {
         let event = Event::new(competition_id, name, order_index);
         self.db.create_event(&event).await?;
         Ok(event)
+    }
+
+    // ---- Roster import ----
+
+    /// Parses a roster file into a reviewable preview -- never writes
+    /// anything to the database. Blocking (file IO + in-memory
+    /// parsing only), so it's a plain function rather than `async`.
+    pub fn parse_roster_file(&self, path: impl AsRef<Path>) -> ServiceResult<ParsedRosterPreview> {
+        Ok(roster_import::parse_file(path)?)
+    }
+
+    /// Imports reviewed roster rows, upserting by TAAF athlete # so a
+    /// weekly re-send of the same roster updates existing athletes
+    /// instead of duplicating them. Rows with no TAAF # are always
+    /// created fresh, since there's nothing to match them against.
+    pub async fn import_roster(
+        &self,
+        competition_id: CompetitionId,
+        rows: Vec<RosterRow>,
+    ) -> ServiceResult<RosterImportSummary> {
+        let mut summary = RosterImportSummary::default();
+
+        for row in rows {
+            let first_name = row.first_name.trim().to_string();
+            let last_name = row.last_name.trim().to_string();
+            if first_name.is_empty() || last_name.is_empty() {
+                summary.skipped += 1;
+                summary
+                    .warnings
+                    .push("Skipped a row with no first/last name.".to_string());
+                continue;
+            }
+
+            let taaf_number = row
+                .taaf_athlete_number
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+
+            let existing = match &taaf_number {
+                Some(number) => {
+                    self.db
+                        .find_gymnast_detail_by_taaf_number(competition_id, number)
+                        .await?
+                }
+                None => None,
+            };
+
+            match existing {
+                Some(mut detail) => {
+                    let mut participant = self.db.get_participant(detail.participant_id).await?;
+                    participant.first_name = first_name;
+                    participant.last_name = last_name;
+                    participant.level_or_category = row.division.clone();
+                    participant.is_attending = row.is_attending;
+                    self.db.update_participant(&participant).await?;
+
+                    detail.club = row.gym.clone();
+                    detail.taaf_registration_number = row.taaf_registration_number.clone();
+                    detail.qual_status = row.qual_status.clone();
+                    detail.at_code = row.at_code.clone();
+                    self.db.update_gymnast_detail(&detail).await?;
+
+                    summary.updated += 1;
+                }
+                None => {
+                    let mut participant = Participant::new(competition_id, first_name, last_name);
+                    participant.level_or_category = row.division.clone();
+                    participant.is_attending = row.is_attending;
+                    self.db.create_participant(&participant).await?;
+
+                    let mut detail = GymnastDetail::new(participant.id, competition_id);
+                    detail.club = row.gym.clone();
+                    detail.taaf_athlete_number = taaf_number.clone();
+                    detail.taaf_registration_number = row.taaf_registration_number.clone();
+                    detail.qual_status = row.qual_status.clone();
+                    detail.at_code = row.at_code.clone();
+                    self.db.create_gymnast_detail(&detail).await?;
+
+                    if taaf_number.is_none() {
+                        summary.warnings.push(format!(
+                            "{} has no TAAF athlete # -- a future re-import can't match this row automatically.",
+                            participant.full_name()
+                        ));
+                    }
+                    summary.created += 1;
+                }
+            }
+        }
+
+        Ok(summary)
+    }
+
+    /// Every participant in a competition alongside their gymnastics
+    /// detail (if any) -- the rotation sheet's data source, and
+    /// generally useful anywhere the roster needs to show TAAF/level
+    /// fields instead of just name + bib.
+    pub async fn list_roster_with_gymnast_detail(
+        &self,
+        competition_id: CompetitionId,
+    ) -> ServiceResult<Vec<RosterEntry>> {
+        let participants = self.db.list_participants(competition_id).await?;
+        let mut entries = Vec::with_capacity(participants.len());
+        for participant in participants {
+            let gymnast_detail = match self.db.get_gymnast_detail(participant.id).await {
+                Ok(detail) => Some(detail),
+                Err(db::DbError::NotFound) => None,
+                Err(e) => return Err(e.into()),
+            };
+            entries.push(RosterEntry {
+                participant,
+                gymnast_detail,
+            });
+        }
+        Ok(entries)
+    }
+
+    // ---- Judge device pairing (networked live scoring) ----
+
+    /// Generates a 10-minute pairing code for a judge to enter on
+    /// their iPad. A 6-digit code space is more than enough headroom
+    /// for the handful of judges concurrently pairing at a meet - no
+    /// collision-retry loop is worth the complexity here.
+    pub async fn create_pairing_code(&self, judge_id: JudgeId) -> ServiceResult<PairingCode> {
+        let pairing = PairingCode {
+            code: generate_pairing_code(),
+            judge_id,
+            expires_at: Utc::now() + chrono::Duration::minutes(10),
+            consumed: false,
+        };
+        self.db.create_pairing_code(&pairing).await?;
+        Ok(pairing)
+    }
+
+    /// Exchanges a still-valid pairing code for a long-lived device
+    /// token. The plaintext token is only ever handed back here -
+    /// only its hash is persisted, so it can't be recovered later even
+    /// from the database file itself.
+    pub async fn redeem_pairing_code(
+        &self,
+        code: &str,
+        device_name: &str,
+    ) -> ServiceResult<(String, JudgeDevice, Judge)> {
+        let pairing = self.db.get_pairing_code(code).await.map_err(|e| match e {
+            db::DbError::NotFound => ServiceError::PairingCodeInvalid,
+            other => other.into(),
+        })?;
+        if pairing.consumed {
+            return Err(ServiceError::PairingCodeInvalid);
+        }
+        if pairing.expires_at < Utc::now() {
+            return Err(ServiceError::PairingCodeExpired);
+        }
+        self.db.consume_pairing_code(code).await?;
+
+        let token = generate_device_token();
+        let device = JudgeDevice {
+            id: JudgeDeviceId::new(),
+            judge_id: pairing.judge_id,
+            device_name: device_name.to_string(),
+            token_hash: hash_token(&token),
+            paired_at: Utc::now(),
+            last_seen_at: None,
+        };
+        self.db.create_judge_device(&device).await?;
+        let judge = self.db.get_judge(pairing.judge_id).await?;
+
+        Ok((token, device, judge))
+    }
+
+    /// Validates a bearer token presented by a paired device and
+    /// records that it was just used. Called on every authenticated
+    /// live-scoring API request.
+    pub async fn authenticate_device(&self, token: &str) -> ServiceResult<JudgeDevice> {
+        let device = self
+            .db
+            .find_judge_device_by_token_hash(&hash_token(token))
+            .await?
+            .ok_or(ServiceError::Unauthorized)?;
+        self.db.touch_judge_device(device.id, Utc::now()).await?;
+        Ok(device)
+    }
+
+    pub async fn list_judge_devices(
+        &self,
+        competition_id: CompetitionId,
+    ) -> ServiceResult<Vec<JudgeDevice>> {
+        Ok(self
+            .db
+            .list_judge_devices_for_competition(competition_id)
+            .await?)
+    }
+
+    pub async fn revoke_judge_device(&self, id: JudgeDeviceId) -> ServiceResult<()> {
+        Ok(self.db.revoke_judge_device(id).await?)
     }
 
     // ---- Live scoreboard: what's currently on screen ----
@@ -312,6 +542,10 @@ impl AppService {
         Ok(self.db.list_judges(competition_id).await?)
     }
 
+    pub async fn get_judge(&self, id: JudgeId) -> ServiceResult<Judge> {
+        Ok(self.db.get_judge(id).await?)
+    }
+
     pub async fn list_events(&self, competition_id: CompetitionId) -> ServiceResult<Vec<Event>> {
         Ok(self.db.list_events(competition_id).await?)
     }
@@ -371,4 +605,23 @@ impl AppService {
         self.db.import_bundle(&bundle, &asset_dir, mode).await?;
         Ok(())
     }
+}
+
+fn generate_pairing_code() -> String {
+    let n: u32 = rand::thread_rng().gen_range(0..1_000_000);
+    format!("{n:06}")
+}
+
+fn generate_device_token() -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(40)
+        .map(char::from)
+        .collect()
+}
+
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
