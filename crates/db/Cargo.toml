@@ -12,4 +12,4 @@ uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "chrono", "uuid", "macros", "migrate"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
-zip = { version = "0.6", default-features = false, features = ["deflate"] }
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
